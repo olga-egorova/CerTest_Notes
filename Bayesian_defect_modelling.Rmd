@@ -1,0 +1,22 @@
+---
+title: "Bayesian defect modelling"
+author: "Olga Egorova"
+date: "24/06/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Outline
+
+## Defect definition. Wrinkle
+
+## System. Data. Model
+
+### Covariance structure
+
+## Linking to calibraiton modelling
+
+## Design questions
