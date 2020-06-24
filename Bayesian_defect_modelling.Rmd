@@ -9,7 +9,10 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Outline
+## Framework
+
+Bayesian model calibration is to be adopted for making the inference on the material and/or defect parameters $\xi$ based on the observed defective samples, and through forward modelling by defining a defect as a deformation field parameterised by $\xi$. 
+The posterior derived for (calibration) parameters $\xi$ is then used for further FE modelling in order to assess their effect on material strength. 
 
 ## Defect definition. Wrinkle
 
