@@ -1,24 +1,165 @@
 ---
 title: "Bayesian defect modelling"
 author: "Olga Egorova"
-date: "24/06/2020"
-output: pdf_document
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+header-includes: \usepackage{bm}
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath("/Users/olga/work/CerTest/output/pyComp/")) # set the wd
 ```
 
-## Framework
+```{r include=FALSE, echo = FALSE}
+library(data.table)
+library(ggplot2)
+```
 
-Bayesian model calibration is to be adopted for making the inference on the material and/or defect parameters $\xi$ based on the observed defective samples, and through forward modelling by defining a defect as a deformation field parameterised by $\xi$. 
-The posterior derived for (calibration) parameters $\xi$ is then used for further FE modelling in order to assess their effect on material strength. 
+Bayesian model calibration is to be adopted for making the inference on the material and/or defect parameters $\mathbf{\xi}$ based on the observed defective samples, and through forward modelling by defining a defect as a deformation field parameterised by $\mathbf{\xi}$. 
 
-## Defect definition. Wrinkle
+The posterior derived for (calibration) parameters $\mathbf{\xi}$ is then used for further FE modelling in order to assess their effect on material strength or any other mai property of interest. 
 
-## System. Data. Model
+## Defining a defect. Wrinkle. Cantilever beam.
+
+A defect is defined as a mapping $W$ from $(\mathbf{x}, \mathbf{\xi}) \in \Omega \times \Xi$, from the pristine state $\Omega \subset \mathrm{R^3}$ to the deformed state $W(\Omega) \subset \mathrm{R^3}$. A set of parameters $\xi$ (let's say that $\mbox{dim} (\mathbf{\xi}) = N_{\mathbf{\xi}}$) is referred to as a "defect profile", "material model parameters" -- so that setting them defines uniquely the transformation between the pristine and deformed states.
+
+Let's consider a wrinkle. Wrinkle defect is defined through the deformed field:
+$$W(x, \mathbf{\xi}) = \sum_{i=1}^{N}a_i\psi_{i}(x, \mathbf{b})$$
+In the toy example of a three-layer cantilever beam, a simple in-plane misalignment of the fibres, e.g. disturbance in the baseline angles will be treated as "defect" parameters: $\mathbf{\xi} = (\theta_1, \theta_2, \theta_3)^T$. 
+
+## Forward Model
+
+The forward model $F(\mathbf{\xi}): \Xi \longrightarrow \mathrm{D}$ -- deterministic mapping from a set of defect generating parameters to the resulting (observed) defect. 
+
+In case of a wrinkle the observed defect is presented as a set of misalignment angles: $\mathbf{\phi}_{obs} = (\phi_1, \ldots \phi_{N_\phi})^T \in \mathrm{D}\subset \mathrm{R}^{N_\phi}$, with each of them defined as $$ \phi_j = \mbox{tan}^{-1} \left( \sum^{N_{\mathbf{\xi}}}_{k=1}\mathbf{\xi}^{k}\frac{d\psi(\mathbf{x_j})}{dx_1}\right).$$ The choice of measurement points $\mathbf{x_j}$ ($j = 1\ldots N_{\phi}$) for each of the misalignment angles to be measured is a separate matter of consideration.
+
+The forward model for the cantilever beam maps a set of angle disturbances $\mathbf{\theta} = (\theta_1, \theta_2, \theta_3)^T$ is mapped to the displacements observed on the surface of the beam at $N_F$ observational points: $\mathbf{d}_{obs} = (d_1, \ldots d_{N_d})^T$. 
+
+## Data. Statistical model
+
+When $n$ independent objects (wrinkles, beams) are observed, we denote the data measured by $D_{obs} = [\mathbf{d}^{(1)},\mathbf{d}^{(2)},\ldots,\mathbf{d}^{(n)}]$ -- an $N_d\times n$ matrix of displacements, and we assume the following stochastic relationship between each of the observations and the forward model:
+$$ \mathbf{d}^{(i)} = F(\mathbf{\xi}) + \mathbf{\varepsilon_{i}},$$ with the vector of measurement errors $\mathbf{\varepsilon_{i}}$ following a normal distribution with zero mean and variance-covariance matrix $\Sigma_{\epsilon}$ -- which contains not just the variance of measurement erros of individual observations at points $\mathbf{x_j}$, but also might/should take into account the covariance structure across measurements within one object.
+
+### Toy example. Cantilever beam
+
+We consider here a 3-layer beam with 2 interfaces, clamped at one end, with no extra load -- just gravity :)
+
 
 ### Covariance structure
+
+We shall consider a few covariance structures, starting from a simple one -- where we assume that all obeseravtions from all measurement points and objects (samples) are independent and identically distributed, i.e. $\mathbf{\varepsilon}_{ij} \sim \mathrm{N}(0, \sigma_{\varepsilon})$.
+
+Assume that the data comes from the following misalignment values, and $\sigma^2 = 10^(-6)$.
+```{r include = TRUE}
+## Adding some measurement errors: i.i.d. for all measurements
+sigma_e = 5*10^(-3)
+sigma2_e = sigma_e^2
+
+df_data = df_displacements + matrix(rnorm(NDataPoints*NGrid, mean = 0, sd = sigma_e), 
+                                    nrow = NGrid)
+Sigma_e = diag(sigma2_e, nrow = NDataPoints)
+
+## Matrix of misfit values: 
+df_misfit = 0.5/sigma_e*fields::rdist(df_data, df_displacements)  # (i,j) : i-th from data, j-th from the model
+
+## Likelihood: exp(-Delta(\xi))
+# LL = exp(-apply(df_misfit, MARGIN = 2, FUN = min)) -- choosing the nearest "data" point, inthis case would be diagonal elements
+data_row = (NGrid + 1)/6  #which( == )
+df_theta[data_row,]
+LL = exp(-df_misfit[data_row,]) 
+
+## LL profile
+LL_profile = cbind(df_theta, data.table("LL" = LL))
+LL_profile[order(LL),]
+```
+
+Looking at Likelihood:
+```{r include = TRUE}
+## Plotting the likelihood
+
+plotly::plot_ly(LL_profile, x = ~theta_1, y = ~theta_2, z = ~theta_3, color = ~LL)
+
+```
+Putting on normal prior on $\mathbf{\theta}$. And looking at the posteriors:
+
+```{r include = TRUE}
+# theta_i ~ N(0, sigma2_theta)
+theta_mu = 0
+theta_sigma2 = 1
+
+# Posterior
+for (i in 1:nrow(LL_profile)) {
+  LL_profile$theta_posterior[i] = mvtnorm::dmvnorm(x = c(LL_profile$theta_1[i], LL_profile$theta_2[i], LL_profile$theta_3[i]),
+                                              mean = rep(theta_mu, 3), sigma = diag(theta_sigma2, 3))*LL_profile$LL[i]
+}
+
+## Plotting the posterior
+plotly::plot_ly(LL_profile, x = ~theta_1, y = ~theta_2, z = ~theta_3, color = ~theta_posterior)
+```
+
+Looking at more complicated error strutures. 
+
+First -- re-shaping the data.
+
+```{r}
+head(df_data)
+dt_data = cbind(df_theta, df_displacements)
+dt_data = melt(dt_data, id.vars = c(names(df_theta)), 
+               measure.vars = names(df_displacements))
+setnames(dt_data, old = c("variable", "value"), new = c("measurement_point", "displacement"))
+dt_data
+```
+
+Read the locations of the measurement (observation) points, merge the datasets.
+
+```{r}
+dt_coords = read.table("obs_coords.csv", header = FALSE, sep = ",", 
+                       col.names = c("measurement_point", "x", "y", "z"))
+dt_coords
+
+dt_data = merge(dt_data, dt_coords, by = "measurement_point")
+dt_data = dt_data[order(dt_data[, 2:4]),]
+```
+
+Error variance covariance structure, taking into account:
+\begin{itemize}
+\item the covariance between observaitonal points $\mathbf{x}^{(i)}$ and $\mathbf{x}^{(j)}$ through the quadratic exponentional part comprising the distance between the points,
+\item the distance of the obervational point from the clamp -- $x_{i}$, through the scaling parameter $\tau^2_d$,
+\item and the measurement error, through parameter $\tau^2_e$, which denotes the ratio of the measurement error variance and the overall variance parameter $\sigma^2$.
+\end{itemize}
+$$ \mbox{Cov}(\mathbf{x}^{(i)}, \mathbf{x}^{(j)}) =   \sigma^2\left[\mbox{exp}\left(-\frac{1}{2}\left[\frac{d_{x_i, x_j}^2}{\phi_x} + \frac{d_{y_i, y_j}^2}{\phi_y}\right]\right) + \delta_{ij}(\tau^2_d x_i^2 + \tau^2_e)\right] $$
+
+
+
+
+```{r}
+l_d = 10^2
+
+sigma2 = 10^(-3)  
+tau2_e = 10^(0)    # sigma2_e = sigma2*tau2_e
+tau2_d = 10^(-1)    # sigma2_d = sigma2*tau2_d
+
+phi_x = 10^2
+phi_y = 10^1
+
+SigmaEpsilon = as.matrix(sigma2*exp(-0.5*(dist(dt_data[1:NDataPoints, list(x)], diag = TRUE, upper = TRUE)^2)/phi_x - 
+                                       0.5*(dist(dt_data[1:NDataPoints, list(y)], diag = TRUE, upper = TRUE)^2)/phi_y))  
+diag(SigmaEpsilon) = as.numeric(sigma2*tau2_d*((dt_data$x[1:NDataPoints])^2)) + sigma2*tau2_e
+
+# generating observations
+dt_data$obs = dt_data$displacement + as.vector(t(mvtnorm::rmvnorm(n = nrow(df_theta), sigma = SigmaEpsilon)))
+
+SigmaEpsilon
+dt_data
+```
+
+```{r}
+
+```
 
 ## Linking to calibraiton modelling
 
