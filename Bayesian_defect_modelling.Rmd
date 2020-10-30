@@ -48,81 +48,42 @@ $$ \mathbf{d}^{(i)} = F(\mathbf{\xi}) + \mathbf{\varepsilon_{i}},$$ with the vec
 
 We consider here a 3-layer beam with 2 interfaces, clamped at one end, with no extra load -- just gravity :)
 
-
 ### Covariance structure
 
-We shall consider a few covariance structures, starting from a simple one -- where we assume that all obeseravtions from all measurement points and objects (samples) are independent and identically distributed, i.e. $\mathbf{\varepsilon}_{ij} \sim \mathrm{N}(0, \sigma_{\varepsilon})$.
+We shall consider a few covariance structures, starting from a simple one -- where we assume that all obeservations from all measurement points and objects (samples) are independent and identically distributed, i.e. $\mathbf{\varepsilon_{ij}} \sim N(0, \sigma^2_{\varepsilon})$.
 
-Assume that the data comes from the following misalignment values, and $\sigma^2 = 10^(-6)$.
-```{r include = TRUE}
-## Adding some measurement errors: i.i.d. for all measurements
-sigma_e = 5*10^(-3)
-sigma2_e = sigma_e^2
+The likelihood profile of the data $$LL_i(\xi) = \exp(-\delta_i(\xi))$$
+is defined through the misfit function:
+$$\delta_i(\xi) = \frac{1}{2}\vert\vert \Sigma^{-1/2}_{\varepsilon}(F(\xi) - d^{(i)})\vert\vert_2$$
 
-df_data = df_displacements + matrix(rnorm(NDataPoints*NGrid, mean = 0, sd = sigma_e), 
-                                    nrow = NGrid)
-Sigma_e = diag(sigma2_e, nrow = NDataPoints)
+Putting on normal prior on $\mathbf{\theta} \sim N(\mathbf{\mu}_{\theta}, \Sigma^2_{\theta})$. 
 
-## Matrix of misfit values: 
-df_misfit = 0.5/sigma_e*fields::rdist(df_data, df_displacements)  # (i,j) : i-th from data, j-th from the model
+And looking at the posteriors: $$pdf_N((\theta_1, \theta_2, \theta_3)^T, \mathbf{\mu}_{\theta}, \Sigma^2_{\theta}) \times LL((\theta_1, \theta_2, \theta_3)^T)$$
 
-## Likelihood: exp(-Delta(\xi))
-# LL = exp(-apply(df_misfit, MARGIN = 2, FUN = min)) -- choosing the nearest "data" point, inthis case would be diagonal elements
-data_row = (NGrid + 1)/6  #which( == )
-df_theta[data_row,]
-LL = exp(-df_misfit[data_row,]) 
 
-## LL profile
-LL_profile = cbind(df_theta, data.table("LL" = LL))
-LL_profile[order(LL),]
-```
-
-Looking at Likelihood:
-```{r include = TRUE}
-## Plotting the likelihood
-
-plotly::plot_ly(LL_profile, x = ~theta_1, y = ~theta_2, z = ~theta_3, color = ~LL)
-
-```
-Putting on normal prior on $\mathbf{\theta}$. And looking at the posteriors:
-
-```{r include = TRUE}
-# theta_i ~ N(0, sigma2_theta)
-theta_mu = 0
-theta_sigma2 = 1
-
-# Posterior
-for (i in 1:nrow(LL_profile)) {
-  LL_profile$theta_posterior[i] = mvtnorm::dmvnorm(x = c(LL_profile$theta_1[i], LL_profile$theta_2[i], LL_profile$theta_3[i]),
-                                              mean = rep(theta_mu, 3), sigma = diag(theta_sigma2, 3))*LL_profile$LL[i]
-}
-
-## Plotting the posterior
-plotly::plot_ly(LL_profile, x = ~theta_1, y = ~theta_2, z = ~theta_3, color = ~theta_posterior)
-```
 
 Looking at more complicated error strutures. 
 
 First -- re-shaping the data.
 
 ```{r}
-head(df_data)
-dt_data = cbind(df_theta, df_displacements)
-dt_data = melt(dt_data, id.vars = c(names(df_theta)), 
-               measure.vars = names(df_displacements))
-setnames(dt_data, old = c("variable", "value"), new = c("measurement_point", "displacement"))
-dt_data
+# head(df_data)
+# dt_data = cbind(df_theta, df_displacements)
+# dt_data = melt(dt_data, id.vars = c(names(df_theta)), 
+#                measure.vars = names(df_displacements))
+# setnames(dt_data, old = c("variable", "value"), new = c("measurement_point", "displacement"))
+# dt_data
 ```
 
 Read the locations of the measurement (observation) points, merge the datasets.
 
 ```{r}
-dt_coords = read.table("obs_coords.csv", header = FALSE, sep = ",", 
-                       col.names = c("measurement_point", "x", "y", "z"))
-dt_coords
-
-dt_data = merge(dt_data, dt_coords, by = "measurement_point")
-dt_data = dt_data[order(dt_data[, 2:4]),]
+# dt_coords = read.table("obs_coords.csv", header = FALSE, sep = ",", 
+#                        col.names = c("measurement_point", "x", "y", "z"))
+# dt_coords
+# 
+# dt_data = merge(dt_data, dt_coords, by = "measurement_point")
+# dt_data = dt_data[order(dt_data[, 2:4]),]
 ```
 
 Error variance covariance structure, taking into account:
@@ -137,30 +98,30 @@ $$ \mbox{Cov}(\mathbf{x}^{(i)}, \mathbf{x}^{(j)}) =   \sigma^2\left[\mbox{exp}\l
 
 
 ```{r}
-l_d = 10^2
-
-sigma2 = 10^(-3)  
-tau2_e = 10^(0)    # sigma2_e = sigma2*tau2_e
-tau2_d = 10^(-1)    # sigma2_d = sigma2*tau2_d
-
-phi_x = 10^2
-phi_y = 10^1
-
-SigmaEpsilon = as.matrix(sigma2*exp(-0.5*(dist(dt_data[1:NDataPoints, list(x)], diag = TRUE, upper = TRUE)^2)/phi_x - 
-                                       0.5*(dist(dt_data[1:NDataPoints, list(y)], diag = TRUE, upper = TRUE)^2)/phi_y))  
-diag(SigmaEpsilon) = as.numeric(sigma2*tau2_d*((dt_data$x[1:NDataPoints])^2)) + sigma2*tau2_e
-
-# generating observations
-dt_data$obs = dt_data$displacement + as.vector(t(mvtnorm::rmvnorm(n = nrow(df_theta), sigma = SigmaEpsilon)))
-
-SigmaEpsilon
-dt_data
+# l_d = 10^2
+# 
+# sigma2 = 10^(-3)  
+# tau2_e = 10^(0)    # sigma2_e = sigma2*tau2_e
+# tau2_d = 10^(-1)    # sigma2_d = sigma2*tau2_d
+# 
+# phi_x = 10^2
+# phi_y = 10^1
+# 
+# SigmaEpsilon = as.matrix(sigma2*exp(-0.5*(dist(dt_data[1:NDataPoints, list(x)], diag = TRUE, upper = TRUE)^2)/phi_x - 
+#                                        0.5*(dist(dt_data[1:NDataPoints, list(y)], diag = TRUE, upper = TRUE)^2)/phi_y))  
+# diag(SigmaEpsilon) = as.numeric(sigma2*tau2_d*((dt_data$x[1:NDataPoints])^2)) + sigma2*tau2_e
+# 
+# # generating observations
+# dt_data$obs = dt_data$displacement + as.vector(t(mvtnorm::rmvnorm(n = nrow(df_theta), sigma = SigmaEpsilon)))
+# 
+# SigmaEpsilon
+# dt_data
 ```
 
 ```{r}
 
 ```
 
-## Linking to calibraiton modelling
+## Linking to calibration modelling
 
 ## Design questions
