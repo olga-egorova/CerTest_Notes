@@ -1,7 +1,6 @@
 
 *.html
 *.rds
-*.csv
 Cantilever_beam/rstan_exercises.R
 Cantilever_beam/Cantilever_beam_explore.Rmd
 Cantilever_beam/.DS_Store
