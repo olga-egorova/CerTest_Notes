@@ -22,14 +22,16 @@ data {
 transformed data {
   int<lower=1> N;
   vector[n+m] z;                       // z = [y, eta]
+  //real mu;
   
+  //mu = 0;
   N = n + m;                           // number of all "data": field and simulation
   z = append_row(y, eta); 
 }
 
 parameters {
   real mu;                                         // mu: constant mean of the eta GP
-  row_vector<lower=0,upper=1>[q] tf;               // tf: calibration parameters
+  row_vector[q] tf;               // tf: calibration parameters
   row_vector<lower=0,upper=1>[p+q] rho_eta;        // rho_eta: reparameterisation of cl_eta  (simulator)
   row_vector<lower=0,upper=1>[p] rho_delta;        // rho_delta: reparameterisation of cl_delta (discrepancy term)
   real<lower=0> lambda_eta;                        // precision parameter for eta (=1/variance)
@@ -103,8 +105,10 @@ model {
   lambda_eta ~ gamma(10, 10); // gamma (shape, rate)
   lambda_delta ~ gamma(10, 0.3); 
   lambda_e ~ gamma(10, 0.03); 
-  mu ~ normal(0,10);
-  //tf ~ multi_normal(rep_vector(0.5, 3), diag_matrix(rep_vector(10, 3)));
+  mu ~ normal(0,1);
+  tf[1] ~ normal(0.25, 0.25);
+  tf[2] ~ normal(0.0, 0.25);
+  //tf[3] ~ normal(0.33, 0.25);
   L = cholesky_decompose(sigma_z); // cholesky decomposition
   z ~ multi_normal_cholesky(rep_vector(mu, N), L);
 }
