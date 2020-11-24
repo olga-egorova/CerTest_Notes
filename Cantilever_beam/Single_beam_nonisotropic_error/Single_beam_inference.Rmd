@@ -1,5 +1,5 @@
 ---
-title: "Cantilever beam modelling: single beam inference"
+title: "Cantilever beam: single beam inference, non-isotropic error"
 author: "Olga Egorova"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: 
@@ -14,15 +14,21 @@ We consider here a 3-layer beam with 2 interfaces, clamped at one end, with no e
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = normalizePath("/Users/olga/work/CerTest/CerTest_Notes/Cantilever_beam/")) # set the wd
+knitr::opts_knit$set(root.dir = "")  # set the wd
 ```
 
-```{r include=FALSE, echo = FALSE}
-library(reticulate)
-use_virtualenv("/Users/olga/anaconda3/envs/pyComp")
+```{r}
 library(data.table)
 library(ggplot2)
 library(rstan)
+```
+
+```{r include=FALSE, echo = FALSE}
+# Set up of venv/python scripts path
+library(reticulate)
+use_virtualenv("/Users/olga/anaconda3/envs/pyComp")  
+python_data = "/Users/olga/work/CerTest/pyComp/examples/cantilever_data.py"
+python_sim  = "/Users/olga/work/CerTest/pyComp/examples/cantilever_sim.py"
 ```
 
 Data generation. 
@@ -33,80 +39,125 @@ Displacement values are non-positive, so that adding an error should not result 
 $$ \log(-d^{(i)}) = \log(-F(\xi)) + \varepsilon_{i}.$$
 Then $d^{(i)} = F(\xi)\times \exp(\varepsilon_{i}).$
 
-Picking the "true" theta-s, corresponding data and observational points (x-s)
-
+Setting up the parameters
 ```{r}
-# Size of the data: n_beam -- the number of "true" underlying theta-s
-n_beam = 1
-# n_obs - number of observational points from the beam(s)
-n_data = 10
+n_beam = 1           # number of "true" underlying theta-s
+n_data = 10          # number of experimental runs
+n_simulations = 30   # number of simulations
 
-# Choosing the true theta within the region of -/+(pi/30)
-df_theta_data = data.table(matrix(runif(n = 3*n_beam, min = -pi/30, max = pi/30), nrow = n_beam))
-colnames(df_theta_data) = c("theta_1", "theta_2", "theta_3")
-df_theta_data
+error_scale = 5*10^(-4)
+#sigma_e = 10^(-8) ; sigma2_e = sigma_e^2  # constant measurement error variance for data generation
 ```
 
-```{r}
-# Load the FE model
-source_python("/Users/olga/work/CerTest/pyComp/examples/cantilever_data.py")
+I.  Data
 
-df_displacements = cbind(dt_coords, data.frame("D" = rep(0, nrow(dt_coords))))
+Picking the "true" theta-s, runningthe FE model and saving the displacements.
+If no python code is run -- please go straight to the next chunk.
+
+```{r}
+# Choosing the true theta within the region of -/+(pi/30)
+theta_data = data.table(matrix(runif(n = 3*n_beam, min = -pi/30, max = pi/30), nrow = n_beam))
+colnames(theta_data) = c("theta_1", "theta_2", "theta_3")
+theta_data
+
+############################################
+# Load the FE model for data geeneration
+############################################
+source_python(python_data)
+dt_coords = read.table("out/obs_coords.csv", header = FALSE, sep = ",",  col.names = c("x", "y"))
+
+# Obtain displacements across all observational points
+dt_displacements = cbind(dt_coords, data.frame("D" = rep(0, nrow(dt_coords))))
 for (d in 1:n_beam){
- df_displacements[, 3+d] = myModel$solve(baseAngles + as.numeric(df_theta_data[d,]), TRUE, iterativeSolver = FALSE)
+ dt_displacements[, ncol(dt_coords)+d] = 
+   myModel$solve(baseAngles + as.numeric(theta_data[d,]), TRUE, iterativeSolver = FALSE)
 }
 
-## Choose observational points, which ones from the beam 
-dt_coords = read.table("obs_coords.csv", header = FALSE, sep = ",",  col.names = c("x", "y", "z"))
-#coords_ind = sort(maximin::maximin.cand(n = n_data, Xcand = as.matrix(dt_coords))$inds)  # c(1:3,5:11)
-coords_ind = c(1:3,5:11)
-
-# Simulate data: additive iid errors
-df_displacements$logD = log(-df_displacements$D)
-
-#sigma2_e = 10^(-12); 
-sigma_e = 10^(-8)
-df_displacements$data = df_displacements$logD + rnorm(nrow(df_displacements), mean = 0, sd = sigma_e)
-df_displacements
-
-df_data = df_displacements[coords_ind, c(1:3, ncol(df_displacements))]
-df_data = df_data[c(1:2,4:5,8,10),]    # choose a subset of data points
+write.csv(theta_data, "out/theta_data.csv", row.names = FALSE)
+write.csv(dt_displacements, "out/dt_displacements.csv", row.names = FALSE)
 ```
-Running the simulations: choosing theta-s as a space-filling design from a "feasible" region: $\pm \pi/30$. Observational points are chosen in an arbitrary way atm.
 
+Read the "true" $\theta$-s and the displacement values
 ```{r}
-mogp_emulator = import("mogp_emulator")
-# defining the computational model
-source_python("/Users/olga/work/CerTest/pyComp/examples/cantilever_sim.py")
+theta_data = read.table("out/theta_data.csv", header = TRUE, sep = ",")
+dt_data_coords = read.table("out/obs_coords.csv", header = FALSE, sep = ",", 
+                            col.names = c("x", "y"))
+dt_displacements = read.table("out/dt_displacements.csv", header = TRUE, sep = ",")
+n_beam = nrow(theta_data)
 
-# Theta-s for simulaitons are chosen from the interval (-pi/30,pi/30), based on the preliminary knowledge of the equipment
+dt_displacements$logD = log(-dt_displacements$D)
+
+# Generate artificial data: additive errors with variances proportional to the displacements
+dt_displacements$data = dt_displacements$logD + rnorm(nrow(dt_displacements), mean = 0, 
+                                                      sd = -error_scale*dt_displacements$D)
+dt_displacements
+
+# Choose observational points
+coords_ind = sort(maximin::maximin.cand(n = n_data, Xcand = as.matrix(dt_data_coords))$inds)  # c(1:3,5:11)
+dt_data = dt_displacements[coords_ind, c(1:2, ncol(dt_displacements))]
+
+write.csv(dt_data, "out/dt_data.csv", row.names = FALSE)
+```
+
+II. Simulations
+
+Running the simulations: choosing $\theta$-s as a space-filling design from a "feasible" region: $\pm \pi/30$.
+If no python code is run -- please go to the next chunk.
+```{r}
+#########################################
+# Choose theta values for simulation
+#########################################
+mogp_emulator = import("mogp_emulator")
 theta_interval = tuple(-pi/30, pi/30, convert = TRUE)
 theta_design = mogp_emulator$LatinHypercubeDesign(list(theta_interval, theta_interval, theta_interval))
+theta_simulation = theta_design$sample(n_simulations)
+colnames(theta_simulation) = c("theta_1", "theta_2", "theta_3")
 
-# Number of theta points for GP emulator
-n_simulations = 30
-NDataPoints = myModel$numDataPoints
-simulation_points = theta_design$sample(n_simulations)
-simulation_output = matrix(ncol = n_simulations, nrow = NDataPoints)
+#########################################
+# Load the FE model for simulations
+#########################################
+source_python(python_sim)
+n_sim_coords = length(myModel$tmp)   
 
-# running the simulations. is faster when done straight in python
+dt_all_simulation = matrix(0, ncol = n_simulations, nrow = n_sim_coords)
+# running the simulations
 for (p in 1:n_simulations){
-  simulation_output[,p] = myModel$solve(baseAngles + simulation_points[p,], TRUE, iterativeSolver = FALSE)
+  dt_all_simulation[,p] = myModel$solve(baseAngles + theta_simulation[p,], TRUE, iterativeSolver = FALSE)
 }
 
-df_all_simulation = log(-simulation_output)
-
-sim_ind = sort(maximin::maximin.cand(n = n_simulations - NDataPoints, Xcand = as.matrix(dt_coords))$inds)
-sim_ind = sort(c(1:NDataPoints, sim_ind))
-
-# Simulations to be considered: choosing the observational points  (#TBD in a more robust way)
-df_simulation = matrix(diag(df_all_simulation[sim_ind, ]), ncol = 1)
-
-# x_sim -- location parameters of the simulations
-x_sim = as.matrix(dt_coords[sim_ind,])
-XT_sim = cbind(x_sim, simulation_points)
+write.csv(theta_simulation, "out/theta_simulation.csv", row.names = FALSE)
+write.csv(dt_all_simulation, "out/dt_all_simulation.csv", row.names = FALSE)
 ```
 
+
+Read the simulation output for all the observational points.
+
+```{r}
+dt_all_simulation = read.table("out/dt_all_simulation.csv", header = TRUE, sep = ",")
+dt_log_simulation = log(-dt_all_simulation)
+dt_sim_coords = read.table("out/sim_coords.csv", header = FALSE, sep = ",",
+                           col.names = c("x", "y"))  # coordinates of the simulation points
+theta_simulation = read.table("out/theta_simulation.csv", header = TRUE, sep = ",")
+
+# Simulations to be considered: choosing the observational points  (#TBD in a more robust way)
+sim_ind = sort(maximin::maximin.cand(n = n_simulations, Xcand = as.matrix(dt_sim_coords))$inds)
+simulation = matrix(diag(as.matrix(dt_log_simulation[sim_ind, ])), ncol = 1)
+colnames(simulation) = "s"
+
+# X_sim -- location parameters of the simulations
+X_sim = dt_sim_coords[sim_ind,]
+XT_sim = cbind(X_sim, theta_simulation)
+
+# all in one table
+dt_simulation = cbind(XT_sim, simulation)
+write.csv(dt_simulation, "out/dt_simulation.csv")
+```
+
+In case the previous chunk is not run -- read the simulation inputs and outputs 
+```{r}
+dt_simulation = read.table("out/dt_simulation.csv", header = TRUE, sep = ",")
+XT_sim = dt_simulation[,1:(ncol(dt_simulation) -1)]
+```
 
 The following sets up the rstan environment, and the parameters for the stan model
 
@@ -126,16 +177,16 @@ par(family="CMU Serif", las=1, bty="l", cex.axis=1, cex.lab=1, cex.main=1,
 ## https://github.com/adChong/bc-stan/blob/master/src/main.R
 
 # get dimensions of dataset
-p = ncol(dt_coords)     # number of input factors
+p = ncol(dt_data_coords)     # number of input factors
 q = ncol(XT_sim) - p    # number of calibration parameters
-n = nrow(df_data)       # sample size of observed field data
+n = nrow(dt_data)       # sample size of observed field data
 m = nrow(XT_sim)        # sample size of computer simulation data
 
 # extract data from DATAFIELD (Table 3) and DATACOMP (Table 4) 
-y = df_data[,4]                 # observed output
-eta = df_simulation[,1]         # simulation output
-xf = df_data[,1:3]              # observed input
-xc = as.matrix(XT_sim[, 1:p])   # simulation input
+y = dt_data[,p+1]                   # observed output
+eta = dt_simulation[,p+q+1]         # simulation output
+xf = dt_data[,1:p]                  # observed input
+xc = as.matrix(XT_sim[, 1:p])       # simulation input
 tc = as.matrix(XT_sim[,(p+1):(p+q)])       # calibration parameters input
 
 x_pred = xf                     # design points for predictions
@@ -167,7 +218,6 @@ for (j in (1:ncol(tc))){
   tc[,j] = (tc[,j] - tc_min) / (tc_max - tc_min)
 }
 
-#tf_mu = c(0.25, 0.42, 0.33)
 # create data as list for input to Stan
 stan_data = list(n=n, m=m, n_pred=n_pred, p=p, y=y, q=q, eta=eta, 
                   xf=as.matrix(xf), xc=as.matrix(xc), 
@@ -177,63 +227,37 @@ stan_data = list(n=n, m=m, n_pred=n_pred, p=p, y=y, q=q, eta=eta,
 Fit a model with the discrepancy term
 ```{r}
 # run model in stan
-fit = stan(file = "/Users/olga/work/CerTest/CerTest_notes/Cantilever_beam/Bayesian_calibration_GPs.stan",
+fit = stan(file = "Bayesian_calibration_GPs.stan",
            data = stan_data,
            iter = 4000,
            chains = 3)
 
 # plot traceplots, excluding warm-up
-stan_trace(fit, pars = c("mu","tf", "cl2_eta_inv", "cl2_delta_inv", 
+stan_trace(fit, pars = c("mu", "tf", "cl2_eta_inv", "cl2_delta_inv", 
                          "lambda_eta", "lambda_delta", "lambda_e"))  #"mu", 
 
 # summarize results
-print(fit, pars = c("mu","tf", "cl2_eta_inv", "cl2_delta_inv", 
+print(fit, pars = c("mu", "tf", "cl2_eta_inv", "cl2_delta_inv", 
                     "lambda_eta", "lambda_delta", "lambda_e"))
 
 # posterior probability distribution of tf
 stan_hist(fit, pars = c("tf"))
-#stan_hist(fit, pars = c("mu"))
-
-# library(shinystan)
-# launch_shiny(mystanmodel)
-```
-
-Run model without the discrepancy term
-
-```{r}
-# run model in stan
-fit0 = stan(file = "/Users/olga/work/CerTest/CerTest_notes/Cantilever_beam/Calibration_GPs_no_discrepancy.stan",
-           data = stan_data,
-           iter = 4000,
-           chains = 3)
-
-# plot traceplots, excluding warm-up
-stan_trace(fit0, pars = c("mu","tf", "cl2_eta_inv", 
-                         "lambda_eta", "lambda_e"))  #"mu", 
-
-# summarize results
-print(fit0, pars = c("mu","tf", "cl2_eta_inv", 
-                    "lambda_eta", "lambda_e"))
-
-# posterior probability distribution of tf
-stan_hist(fit0, pars = c("tf"))
-stan_hist(fit0, pars = c("mu"))
+stan_hist(fit, pars = c("mu"))
 
 ```
+
 
 ```{r}
 # True scaled theta-s
-c((df_theta_data[1,1]- min(XT_sim[,4]))/(max(XT_sim[,4]) - min(XT_sim[,4])),
-  (df_theta_data[1,2]- min(XT_sim[,5]))/(max(XT_sim[,5]) - min(XT_sim[,5])),
-  (df_theta_data[1,3]- min(XT_sim[,6]))/(max(XT_sim[,6]) - min(XT_sim[,6])))
+c((theta_data[1,1]- min(XT_sim[,p+1]))/(max(XT_sim[,p+1]) - min(XT_sim[,p+1])),
+  (theta_data[1,2]- min(XT_sim[,p+2]))/(max(XT_sim[,p+2]) - min(XT_sim[,p+2])),
+  (theta_data[1,3]- min(XT_sim[,p+3]))/(max(XT_sim[,p+3]) - min(XT_sim[,p+3])))
 
-df_theta_data/(pi/180)
-
-tc
+theta_data/(pi/180)
 ```
 
 
-Look at pairs and triplets of theta posteriors -- in contrast with marginals obsserved on the histograms before
+Look at pairs and triplets of theta posteriors -- in contrast with marginals observed on the histograms before
 ```{r}
 df_of_draws = as.data.table(fit)               # nrow == number of chains x number of iterations
 setnames(df_of_draws, old = c("tf[1]", "tf[2]", "tf[3]"),
@@ -255,7 +279,30 @@ k3 <- kde2d(df_of_draws$tf1, df_of_draws$tf3, n=100)
 image(k3, xlab = expression(theta[1]), ylab = expression(theta[3]))
 
 ```
-Same for the model without the discrepancy term:
+
+Run model without the discrepancy term
+
+```{r}
+# run model in stan
+fit0 = stan(file = "Calibration_GPs_no_discrepancy.stan",
+           data = stan_data,
+           iter = 4000,
+           chains = 3)
+
+# plot traceplots, excluding warm-up
+stan_trace(fit0, pars = c("mu","tf", "cl2_eta_inv", 
+                         "lambda_eta", "lambda_e"))  #"mu", 
+
+# summarize results
+print(fit0, pars = c("mu","tf", "cl2_eta_inv", 
+                    "lambda_eta", "lambda_e"))
+
+# posterior probability distribution of tf
+stan_hist(fit0, pars = c("tf"))
+stan_hist(fit0, pars = c("mu"))
+```
+
+Pair-wise plots for the model without the discrepancy term:
 ```{r}
 df_of_draws0 = as.data.table(fit0)               # nrow == number of chains x number of iterations
 setnames(df_of_draws0, old = c("tf[1]", "tf[2]", "tf[3]"),
@@ -270,30 +317,5 @@ k30 <- kde2d(df_of_draws0$tf1, df_of_draws0$tf3, n=100)
 image(k30, xlab = expression(theta[1]), ylab = expression(theta[3]))
 ```
 
-```{r}
-# 3d posterior plotting: all 3 theta-s
-n_grid = 100
-kk = misc3d::kde3d(df_of_draws$tf1, df_of_draws$tf2, df_of_draws$tf3, n=n_grid)
 
-PP = c()
-xx = c(); yy = c(); zz = c()
-
-for (i in 1: n_grid){
-  xx = c(xx, rep(kk$x[i], n_grid*n_grid))
-  for (j in 1: n_grid){
-    yy = c(yy, rep(kk$y[j], n_grid))
-    PP = c(PP, as.vector(kk$d[i,j,]))
-  }
-}
-zz = rep(kk$z, n_grid*n_grid)
-
-pp_plot = data.frame("tf1" = xx, "tf2" = yy, "tf3" = zz, "pp" = PP)
-plotly::plot_ly(pp_plot, x = ~tf1, y = ~tf2, z = ~tf3, color = ~ pp)
-```
-
-Fixing $\theta_2 = 0$ and run it all for reduced dimensionality.
-
-```{r}
-
-```
 
