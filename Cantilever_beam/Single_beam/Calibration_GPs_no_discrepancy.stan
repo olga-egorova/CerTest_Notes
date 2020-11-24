@@ -86,7 +86,7 @@ model {
   mu ~ normal(0,1);
   tf[1] ~ normal(0.6, 0.25);
   tf[2] ~ normal(0.3, 0.25);
+  tf[3] ~ normal(0.5, 0.25);
   L = cholesky_decompose(sigma_z); // cholesky decomposition
   z ~ multi_normal_cholesky(rep_vector(mu, N), L);
 }
-            

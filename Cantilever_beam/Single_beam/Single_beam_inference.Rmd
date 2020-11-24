@@ -128,8 +128,6 @@ write.csv(dt_all_simulation, "out/dt_all_simulation.csv", row.names = FALSE)
 ```
 
 
-
-
 Read the simulation output for all the observational points.
 
 ```{r}
@@ -137,6 +135,7 @@ dt_all_simulation = read.table("out/dt_all_simulation.csv", header = TRUE, sep =
 dt_log_simulation = log(-dt_all_simulation)
 dt_sim_coords = read.table("out/sim_coords.csv", header = FALSE, sep = ",",
                            col.names = c("x", "y"))  # coordinates of the simulation points
+theta_simulation = read.table("out/theta_simulation.csv", header = TRUE, sep = ",")
 
 # Simulations to be considered: choosing the observational points  (#TBD in a more robust way)
 sim_ind = sort(maximin::maximin.cand(n = n_simulations, Xcand = as.matrix(dt_sim_coords))$inds)
@@ -150,6 +149,12 @@ XT_sim = cbind(X_sim, theta_simulation)
 # all in one table
 dt_simulation = cbind(XT_sim, simulation)
 write.csv(dt_simulation, "out/dt_simulation.csv")
+```
+
+In case the previous chunk is not run -- read the simulation inputs and outputs 
+```{r}
+dt_simulation = read.table("out/dt_simulation.csv", header = TRUE, sep = ",")
+XT_sim = dt_simulation[,1:(ncol(dt_simulation) -1)]
 ```
 
 
@@ -253,7 +258,7 @@ theta_data/(pi/180)
 ```
 
 
-Look at pairs and triplets of theta posteriors -- in contrast with marginals obsserved on the histograms before
+Look at pairs and triplets of theta posteriors -- in contrast with marginals observed on the histograms before
 ```{r}
 df_of_draws = as.data.table(fit)               # nrow == number of chains x number of iterations
 setnames(df_of_draws, old = c("tf[1]", "tf[2]", "tf[3]"),
