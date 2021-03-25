@@ -1,5 +1,7 @@
 //
-//   Bayesian calibration using GPR modelling
+//   Bayesian calibration using GPR modelling.
+//   
+//   Here: a differeent kernel for the discrepancy term
 //
 //   https://github.com/adChong/bc-stan
 //    
@@ -31,24 +33,31 @@ transformed data {
 
 parameters {
   real mu;                                         // mu: constant mean of the eta GP
-  row_vector[q] tf;                                // tf: calibration parameters
+  row_vector[q] tf;               // tf: calibration parameters
   row_vector<lower=0,upper=1>[p+q] rho_eta;        // rho_eta: reparameterisation of cl_eta  (simulator)
+  row_vector<lower=0,upper=1>[p] rho_delta;        // rho_delta: reparameterisation of cl_delta (discrepancy term)
   real<lower=0> lambda_eta;                        // precision parameter for eta (=1/variance)
+  real<lower=0> lambda_delta;                      // precision parameter for delta
   real<lower=0> lambda_e;                          // observation error precision
 }
 
 transformed parameters {
+  // cl2_delta_inv: inverse squared correlation parameter for bias term
   // cl2_eta_inv: inverse squared correlation parameter for eta
   row_vector[p+q] cl2_eta_inv;
+  row_vector[p] cl2_delta_inv;
   cl2_eta_inv = -4.0 * log(rho_eta);
+  cl2_delta_inv = -4.0 * log(rho_delta);
 }
 
 model {
   // declare variables
   matrix[N, (p+q)] xt;
   matrix[N, N] sigma_eta;   // simulator covariance 
+  matrix[n, n] sigma_delta; // bias term covariance 
   matrix[N, N] sigma_z;     // covariance matrix
   matrix[N, N] L;           // cholesky decomposition of covariance matrix 
+  row_vector[p] temp_delta;
   row_vector[p+q] temp_eta;
 
   // xt = [[xt,tf],[xc,tc]]  
@@ -58,7 +67,8 @@ model {
   xt[(n+1):N, (p+1):(p+q)] = tc;              //(2,2)-block: simulation theta-s m*q
 
   // diagonal elements of sigma_eta
-  sigma_eta = diag_matrix(rep_vector((1 / lambda_eta + 0.1^10), N));  // adding a nugget tau2
+  sigma_eta = diag_matrix(rep_vector(((1 + 0.1^10) / lambda_eta), N));  // adding a nugget tau2
+  
  
   // off-diagonal elements of sigma_eta
   for (i in 1:(N-1)) {
@@ -70,9 +80,22 @@ model {
     }
   }
 
+  // diagonal elements of sigma_delta
+  sigma_delta = diag_matrix(rep_vector((1 / lambda_delta), n) + tau_delta*(xf^2));
+
+  // off-diagonal elements of sigma_delta
+  for (i in 1:(n-1)) {
+    for (j in (i+1):n) {
+      temp_delta = xf[i] - xf[j];
+      sigma_delta[i, j] = cl2_delta_inv .* temp_delta * temp_delta';
+      sigma_delta[i, j] = exp(-0.5 * sigma_delta[i, j]) / lambda_delta;
+      sigma_delta[j, i] = sigma_delta[i, j];
+    }   
+  }
+
   // computation of covariance matrix sigma_z 
   sigma_z = sigma_eta;
-  sigma_z[1:n, 1:n] = sigma_eta[1:n, 1:n];
+  sigma_z[1:n, 1:n] = sigma_eta[1:n, 1:n] + sigma_delta;
 
   // add observation errors
   for (i in 1:n) {
@@ -81,11 +104,13 @@ model {
 
   // Specify priors here
   rho_eta[1:(p+q)] ~ beta(1.0, 0.3);
+  rho_delta[1:p] ~ beta(1.0, 0.3);
   lambda_eta ~ gamma(10, 10); // gamma (shape, rate)
+  lambda_delta ~ gamma(10, 0.3); 
   lambda_e ~ gamma(10, 0.03); 
   mu ~ normal(0,1);
-  tf[1] ~ normal(0.6, 0.15);
-  tf[2] ~ normal(0.3, 0.15);
+  tf[1] ~ normal(0.5, 0.15);
+  tf[2] ~ normal(0.5, 0.15);
   tf[3] ~ normal(0.5, 0.15);
   L = cholesky_decompose(sigma_z); // cholesky decomposition
   z ~ multi_normal_cholesky(rep_vector(mu, N), L);

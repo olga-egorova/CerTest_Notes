@@ -58,7 +58,7 @@ model {
   row_vector[p] temp_delta;
   row_vector[p+q] temp_eta;
 
-  // xt = [[xt,tf],[xc,tc]]  
+  // xt = [[xf,tf],[xc,tc]]  
   xt[1:n, 1:p] = xf;         // (1,1)-block: field observed inputs n*p
   xt[(n+1):N, 1:p] = xc;     // (2,1)-block: observed simulation inputs m*p
   xt[1:n, (p+1):(p+q)] = rep_matrix(tf, n);   //(1,2)-block: field 'suggested'/'current' theta-s n*q
@@ -106,9 +106,9 @@ model {
   lambda_delta ~ gamma(10, 0.3); 
   lambda_e ~ gamma(10, 0.03); 
   mu ~ normal(0,1);
-  tf[1] ~ normal(0.6, 0.25);
-  tf[2] ~ normal(0.3, 0.25);
-  tf[3] ~ normal(0.5, 0.25);
+  tf[1] ~ normal(0.4, 0.15);
+  tf[2] ~ normal(0.47, 0.15);
+  tf[3] ~ normal(0.73, 0.15);
   L = cholesky_decompose(sigma_z); // cholesky decomposition
   z ~ multi_normal_cholesky(rep_vector(mu, N), L);
 }

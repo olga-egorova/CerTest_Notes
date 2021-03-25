@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = "")  # set the wd
 ```
 
-```{r}
+```{r warning=FALSE}
 library(data.table)
 library(ggplot2)
 library(rstan)
@@ -41,17 +41,19 @@ Then $d^{(i)} = F(\xi)\times \exp(\varepsilon_{i}).$
 
 Setting up the parameters
 ```{r}
-n_beam = 1           # number of "true" underlying theta-s
-n_data = 10          # number of experimental runs
-n_simulations = 30   # number of simulations
+n_beam = 1            # number of "true" underlying theta-s
+n_data = 100          # number of observational points from each beam
+n_simulations = 30    # number of simulations to be run
 
-error_scale = 5*10^(-4)
+n_sim_points = 10     # number of locations to be chosen per simulation run
+
+error_scale = 5*10^(-3)  # artificial data -- added error is scaled w.r.t. the FEM-displacement
 #sigma_e = 10^(-8) ; sigma2_e = sigma_e^2  # constant measurement error variance for data generation
 ```
 
 I.  Data
 
-Picking the "true" theta-s, runningthe FE model and saving the displacements.
+Picking the "true" theta-s, running the FE model and saving the displacements.
 If no python code is run -- please go straight to the next chunk.
 
 ```{r}
@@ -59,12 +61,13 @@ If no python code is run -- please go straight to the next chunk.
 theta_data = data.table(matrix(runif(n = 3*n_beam, min = -pi/30, max = pi/30), nrow = n_beam))
 colnames(theta_data) = c("theta_1", "theta_2", "theta_3")
 theta_data
+theta_data*180/pi
 
 ############################################
-# Load the FE model for data geeneration
+# Load the FE model for data generation
 ############################################
 source_python(python_data)
-dt_coords = read.table("out/obs_coords.csv", header = FALSE, sep = ",",  col.names = c("x", "y"))
+dt_coords = read.table("out/obs_coords.csv", header = FALSE, sep = ",",  col.names = c("x", "y", "z"))
 
 # Obtain displacements across all observational points
 dt_displacements = cbind(dt_coords, data.frame("D" = rep(0, nrow(dt_coords))))
@@ -81,7 +84,7 @@ Read the "true" $\theta$-s and the displacement values
 ```{r}
 theta_data = read.table("out/theta_data.csv", header = TRUE, sep = ",")
 dt_data_coords = read.table("out/obs_coords.csv", header = FALSE, sep = ",", 
-                            col.names = c("x", "y"))
+                            col.names = c("x", "y", "z"))
 dt_displacements = read.table("out/dt_displacements.csv", header = TRUE, sep = ",")
 n_beam = nrow(theta_data)
 
@@ -89,12 +92,15 @@ dt_displacements$logD = log(-dt_displacements$D)
 
 # Generate artificial data: additive errors with variances proportional to the displacements
 dt_displacements$data = dt_displacements$logD + rnorm(nrow(dt_displacements), mean = 0, 
-                                                      sd = -error_scale*dt_displacements$D)
+                                                      sd = error_scale*abs(dt_displacements$D))
 dt_displacements
 
-# Choose observational points
+# Choose observational points:
 coords_ind = sort(maximin::maximin.cand(n = n_data, Xcand = as.matrix(dt_data_coords))$inds)  # c(1:3,5:11)
-dt_data = dt_displacements[coords_ind, c(1:2, ncol(dt_displacements))]
+dt_data = dt_displacements[coords_ind, c(1:3, ncol(dt_displacements))]
+
+coords_ind[which(dt_data$data == "-Inf")] = coords_ind[which(dt_data$data == "-Inf")] + 1
+dt_data = dt_displacements[coords_ind, c(1:3, ncol(dt_displacements))]
 
 write.csv(dt_data, "out/dt_data.csv", row.names = FALSE)
 ```
@@ -135,29 +141,47 @@ Read the simulation output for all the observational points.
 ```{r}
 dt_all_simulation = read.table("out/dt_all_simulation.csv", header = TRUE, sep = ",")
 dt_log_simulation = log(-dt_all_simulation)
+
 dt_sim_coords = read.table("out/sim_coords.csv", header = FALSE, sep = ",",
-                           col.names = c("x", "y"))  # coordinates of the simulation points
+                           col.names = c("x", "y", "z"))  # coordinates of the simulation points
 theta_simulation = read.table("out/theta_simulation.csv", header = TRUE, sep = ",")
 
 # Simulations to be considered: choosing the observational points  (#TBD in a more robust way)
-sim_ind = sort(maximin::maximin.cand(n = n_simulations, Xcand = as.matrix(dt_sim_coords))$inds)
-simulation = matrix(diag(as.matrix(dt_log_simulation[sim_ind, ])), ncol = 1)
-colnames(simulation) = "s"
 
-# X_sim -- location parameters of the simulations
-X_sim = dt_sim_coords[sim_ind,]
-XT_sim = cbind(X_sim, theta_simulation)
+X_sim =  matrix(nrow = 0, ncol = ncol(dt_sim_coords))
+XT_sim = matrix(nrow = 0, ncol = ncol(dt_sim_coords) + ncol(theta_simulation))
+simulation = c()
+for (i in 1:n_simulations) {
+  sim_ind = sort(maximin::maximin.cand(n = n_sim_points, Xcand = as.matrix(dt_sim_coords))$inds)
+  
+  cur_sim = dt_log_simulation[sim_ind, i]
+  faulty_ind = which(cur_sim == "-Inf"); sim_ind[faulty_ind] = sim_ind[faulty_ind] + 2
+  faulty_ind = which(is.nan(cur_sim)); sim_ind[faulty_ind] = sim_ind[faulty_ind] + 1
+  cur_sim = dt_log_simulation[sim_ind,i]
+
+  simulation = c(simulation, cur_sim)
+  # X_sim -- location parameters of the simulations
+  X_sim = dt_sim_coords[sim_ind, 1:ncol(dt_sim_coords)]
+  XT_sim = rbind(XT_sim, cbind(as.matrix(X_sim), 
+                               matrix(rep(as.vector(theta_simulation[i,]), n_sim_points), 
+                                      byrow = TRUE, nrow = n_sim_points)))
+}
+
+#colnames(XT_sim) = c(colnames(dt_sim_coords), colnames(theta_simulation))
 
 # all in one table
-dt_simulation = cbind(XT_sim, simulation)
-write.csv(dt_simulation, "out/dt_simulation.csv")
+dt_simulation = cbind(XT_sim, matrix(simulation, ncol = 1))
+colnames(dt_simulation) = c(colnames(dt_sim_coords), colnames(theta_simulation), "s")
+
+dt_simulation
+write.csv(dt_simulation, "out/dt_simulation.csv", row.names = FALSE)
 ```
 
 In case the previous chunk is not run -- read the simulation inputs and outputs 
 ```{r}
 dt_simulation = read.table("out/dt_simulation.csv", header = TRUE, sep = ",")
 XT_sim = dt_simulation[,1:(ncol(dt_simulation) -1)]
-```
+```  
 
 The following sets up the rstan environment, and the parameters for the stan model
 
