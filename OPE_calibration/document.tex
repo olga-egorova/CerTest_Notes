@@ -1,0 +1,178 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[a4paper,left=1.91cm,right=1.91cm,top=2.54cm,bottom=2.54cm]{geometry}
+%\usepackage{natbib}
+\usepackage{amsmath,amsthm,amssymb,mathrsfs}
+\usepackage{bm}
+\newcommand{\bmx}{\bm{x}}
+\newcommand{\bmxf}{\bm{x}}
+\newcommand{\bmxc}{\bm{xc}}
+\newcommand{\bmtheta}{\bm{\theta}}
+\newcommand{\bmt}{\bm{t}}
+\newcommand{\bmtf}{\bm{tf}}
+\newcommand{\bmtc}{\bm{tc}}
+\newcommand{\SigmaEta}{\Sigma_{\eta}}
+\newcommand{\bs}{\boldsymbol}
+\newcommand{\subs}[1]{\ensuremath{_{\textrm{#1}}}}
+\newcommand{\tr}{\mbox{tr}}
+
+\title{Outer-Product Emulator (OPE) and Calibration for Multivariate Output}
+\begin{document}
+\maketitle
+General notations:
+\begin{itemize}
+	\item $m$ -- number of simulation/computer model runs; moderate.
+	\item $M$ -- output dimensionality, e.g. the number of grid points where the displacement is calculated; large.
+	\item $n$ -- number of data samples observed, e.g. the number of beams. For now we have $n=1$.
+	\item $N$ -- number of data points observed at each sample; large.
+	\item $\bmx$ -- the vector of controllable inputs (locations/grid coordinates); dim$(\bmx) = p$. 
+	\item $\bmtheta$ -- uncontrollable inputs/calibration parameters; dim$(\bmtheta) = q$. 
+\end{itemize}
+Calibration statistical model -- relationship between the field measurement $y$ and the computer model at location $\bmx_{i}$, with the "true" value of the unobserved parameters $\bmtheta$.
+\begin{equation}
+\label{eq::stat_calibration_model}
+y(\bmx_i) = \eta(\bmx_i, \bmtheta) + \delta(\bmx_i) + \varepsilon_i
+\end{equation}
+The joint vector of observed $y_{\tilde{i}} = y(\bmxf_{\tilde{i}})$, $\tilde{i}= 1,\dots ,N$ \\and computational outputs $\eta_{ij} = \eta(\bmxc_i, \bmtc_j)$, $i = 1,\dots , M$, $j = 1,\dots , m$:
+\begin{center}
+$D = [y_{\tilde{1}},\dots , y_{\tilde{N}}, \eta_{11}, \dots ,\eta_{1m}, \eta_{21}, \dots ,\eta_{2m}, \eta_{M1}, \dots ,\eta_{Mm}]^T$; dim $D = N + mM$.
+\end{center}
+Both the simulator and the discrepancy terms are modelled as (independent) Gaussian processes with constant means and covariance functions $k_{\eta}$ and $k_{\delta}$ respectively:
+\begin{align*}
+\eta  &\sim \mbox{GP}(\mu, k_{\eta}(\bmx, \bmt; \bmx', \bmt' )),\\
+\delta  &\sim \mbox{GP}(0, k_{\delta}(\bmx; \bmx')).\\
+\end{align*}
+
+We assume the separability of $k_{\eta}$ in $\bmx$ and $\bmt$, such that
+\begin{equation*}
+k_{\eta}(\bmx, \bmt; \bmx', \bmt' ) = k_{x}(\bmx; \bmx')\times k_{t}(\bmt; \bmt').
+\end{equation*}
+
+The covariance matrix of the joint vector $D$ is:
+\begin{equation}
+\Sigma_D = \Sigma_{\eta} + \left(
+\begin{matrix}
+\Sigma_{\delta} + \Sigma_{\varepsilon} & 0\\
+0 & 0
+\end{matrix} \right),
+\end{equation}
+where $\Sigma_{\eta}$ is an $(N+Mm)\times (N+Mm)$ matrix, with each element being the $k_{\eta}$ function evaluated for the pairs of $(\bmx, \bmt)$ across both data points $(\bmxf_{\tilde{i}}, \bmtf)$ (first $N$ components) and computational model inputs $(\bmx_i, \bmt_j)$ (last $Mm$ components). By $\bmtf$ here we denote the "current" value of $\bmtheta$ at a particular computational/evaluation step. \\
+$\Sigma_{\delta}$ and $\Sigma_{\varepsilon}$ are $N \times N$ covariance matrices for the discrepancy and error terms, evaluated at data controllable inputs $\bmxf_{\tilde{i}}.$
+\\[5 pt]
+Let's write out the total covariance matrix, one block at a time. \\[5 pt]
+
+I. The $[1:N]\times [1:N]$ block of $\bm{\Sigma_{D}}$:
+\begin{align*}
+\bm{\Sigma_{D}}^{(11)} = \bm{\Sigma_{\eta}^{(11)}} + \bm{\Sigma_{\delta}} + \bm{\Sigma_{\varepsilon}} =&
+\left\{k_{x}(\bmx_{\tilde{i}}; \bmx'_{\tilde{j}})\right\}_{\tilde{i},\tilde{j} = 1}^{N} + \left\{k_{\delta}(\bmx_{\tilde{i}}; \bmx'_{\tilde{j}})\right\}_{\tilde{i},\tilde{j} = 1}^{N} + \sigma^2\bm{I}_N \\=& \bm{K^{x}_{\tilde{N}\tilde{N}}} + \bm{K^{\delta}_{\tilde{N}\tilde{N}}} + \bm{K^{\varepsilon}_{\tilde{N}\tilde{N}}}
+\end{align*}
+
+II. The $[1:N]\times [N+1 : N + Mm]$ block of $\bm{\Sigma_{D}}$: $\bm{\Sigma_{D}}^{(12)} =  \bm{\Sigma_{\eta}}^{(12)}$
+\begin{align*}
+\bm{\Sigma_{D}}^{(12)} = 
+\left[
+\begin{matrix}
+k_x(\bmx_{\tilde{1}}, \bmxc_1) & k_x(\bmx_{\tilde{1}}, \bmxc_2) & \ldots & k(\bmx_{\tilde{1}}, \bmxc_M)\\
+k_x(\bmx_{\tilde{2}}, \bmxc_1) & k_x(\bmx_{\tilde{2}}, \bmxc_2) & \ldots & k(\bmx_{\tilde{2}}, \bmxc_M)\\
+\vdots & \vdots & \vdots & \vdots \\
+k_x(\bmx_{\tilde{N}}, \bmxc_1) & k_x(\bmx_{\tilde{N}}, \bmxc_2) & \ldots & k(\bmx_{\tilde{N}}, \bmxc_M)
+\end{matrix}
+\right]
+ \otimes &
+ \left[
+\begin{matrix}
+k_t(\bmtc_1, \bmtf), & k_t(\bmtc_2, \bmtf), &\ldots ,& k_t(\bmtc_m, \bmtf)
+\end{matrix}  \right]
+\\[3 pt]
+= & \bm{K^{x}_{\tilde{N}M} \otimes K^t_{1m}}
+\end{align*} \\[10 pt]
+
+III. The $[N+1 : N + Mm]\times [1:N]$ block of $\bm{\Sigma_D}$: $\bm{\Sigma_D}^{(21)} = \bm{\Sigma_{\eta}}^{(21)} =  [\bm{\Sigma_{\eta}}^{(12)}]^T$ 
+\begin{align*}
+\bm{\Sigma_D}^{(21)} = [K^{x}_{\tilde{N}M} \otimes K^t_{1m}]^T = [K^{x}_{\tilde{N}M}]^T \otimes [K^t_{1m}]^T = \bm{K^{x}_{M\tilde{N}} \otimes K^t_{m1}}
+\end{align*}
+
+
+IV. The $[N+1 : N + Mm]\times [N+1 : N + Mm]$ block of $\bm{\Sigma_D}$: 
+\begin{align*}
+\bm{\Sigma_D}^{(22)} =\bm{\Sigma_{\eta}}^{(22)} = & \left[
+\begin{matrix}
+k_x(\bmxc_1, \bmxc_1) & k_x(\bmxc_1, \bmxc_2) & \ldots & k_x(\bmxc_1, \bmxc_M)\\
+k_x(\bmxc_2, \bmxc_1) & k_x(\bmxc_2, \bmxc_2) & \ldots & k_x(\bmxc_2, \bmxc_M)\\
+\vdots & \vdots & \vdots & \vdots \\
+k_x(\bmxc_M, \bmxc_1) & k_x(\bmxc_M, \bmxc_2) & \ldots & k_x(\bmxc_M, \bmxc_M)
+\end{matrix}
+\right]
+\otimes \\ &\left[
+\begin{matrix}
+k_x(\bmtc_1, \bmtc_1) & k_x(\bmtc_1, \bmtc_2) & \ldots & k_x(\bmtc_1, \bmtc_m)\\
+k_x(\bmtc_2, \bmtc_1) & k_x(\bmtc_2, \bmtc_2) & \ldots & k_x(\bmtc_2, \bmtc_m)\\
+\vdots & \vdots & \vdots & \vdots \\
+k_x(\bmtc_m, \bmtc_1) & k_x(\bmtc_m, \bmtc_2) & \ldots & k_x(\bmtc_m, \bmtc_m)
+\end{matrix}
+\right] \\
+= & \bm{K^{x}_{MM} \otimes K^t_{mm}}
+\end{align*}
+
+The final block-representation of the total covariance matrix:
+
+\begin{equation}
+\bm{\Sigma_D} = \left[
+\begin{matrix}
+\bm{K^{x}_{\tilde{N}\tilde{N}}} + \bm{K^{\delta}_{\tilde{N}\tilde{N}}} + \bm{K^{\varepsilon}_{\tilde{N}\tilde{N}}} & \bm{K^{x}_{\tilde{N}M} \otimes K^t_{1m}} \\[5pt]
+\bm{K^{x}_{M\tilde{N}} \otimes K^t_{m1}} & \bm{K^{x}_{MM} \otimes K^t_{mm}}
+\end{matrix}
+\right]
+\end{equation}
+
+\newpage
+
+Blockwise inversion:
+\begin{align*}
+\left[
+\begin{matrix}
+\bm{A} & \bm{B}\\
+\bm{C} & \bm{D}
+\end{matrix}
+\right] = 
+\left[
+\begin{matrix}
+(\bm{A}  - \bm{B} \bm{D}^{-1} \bm{C} )^{-1} & -(\bm{A}  - \bm{B} \bm{D}^{-1} \bm{C} )^{-1}\bm{B} \bm{D}^{-1} \\
+- \bm{D}^{-1}\bm{B}(\bm{A}  - \bm{B} \bm{D}^{-1} \bm{C} )^{-1} & (\bm{D}  - \bm{C} \bm{A}^{-1} \bm{B} )^{-1} 
+\end{matrix}
+\right]
+\end{align*}
+
+Note: $\bm{\Sigma_D}$ is symmetrical, $\bm{B} = \bm{C}^T$ and the corresponding blocks in $\bm{\Sigma_D}^{-1}$ are also symmetrical.
+
+1.  The $(1,1)$, $N\times N$ block of the inverse matrix is 
+\begin{align*}
+\bm{\Sigma_D}^{-1}[1,1] &= \left(\bm{\Sigma_D}^{(11)} - \bm{\Sigma_D}^{(21)T}\left[\bm{\Sigma_D}^{(22)}\right]^{-1}\bm{\Sigma_D}^{(21)}\right)^{-1} \\ & = (\bm{Q_1}^T\bm{Q_1})^{-1} = \bm{Q_1}^{-1}\bm{Q_1}^{-T},
+\end{align*}
+
+where $\bm{Q_1}$ is the Cholesky decomposition of the matrix to be inverted here -- in a similar way as matrix $D$ in eq. (3.6a) in Rougier, (2008).
+
+2. The $(1,2)$, $N\times Mm$  block of the inverse matrix (and the transposed $(2,1)$-block) is
+\begin{align*}
+\bm{\Sigma_D}^{-1}[1,2] &= - \bm{Q_1}^{-1}\bm{Q_1}^{-T}
+\left[ \bm{K^{x}_{\tilde{N}M} \otimes K^t_{1m}}\right]\left[ \bm{K^{x}_{MM} \otimes K^t_{mm}}\right]^{-1} \\ & = - \bm{Q_1}^{-1}\bm{Q_1}^{-T}
+\left[ \bm{K^{x}_{\tilde{N}M}}\bm{K^{-x}_{MM}} \otimes  \bm{K^{t}_{1m}}\bm{K^{-t}_{mm}}\right]\\ & = - \bm{Q_1}^{-1}\bm{Q_1}^{-T}\bm{R}.
+\end{align*}
+
+3. The $(2,2)$, $Mm\times Mm$ block
+\begin{align*}
+\bm{\Sigma_D}^{-1}[2,2] &= \left(\bm{\Sigma_D}^{(22)} - \bm{\Sigma_D}^{(12)T}\left[\bm{\Sigma_D}^{(11)}\right]^{-1}\bm{\Sigma_D}^{(12)} \right)^{-1} \\ &= (\bm{Q_2}^T\bm{Q_2})^{-1} = \bm{Q_2}^{-1}\bm{Q_2}^{-T}.
+\end{align*}
+
+The whole matrix:
+\begin{align*}
+\bm{\Sigma_D}^{-1} = \left[
+\begin{matrix}
+\bm{Q_1}^{-1}\bm{Q_1}^{-T} & -\bm{Q_1}^{-1}\bm{Q_1}^{-T}\bm{R} \\
+-\bm{R^T}\bm{Q_1}^{-1}\bm{Q_1}^{-T} & \bm{Q_2}^{-1}\bm{Q_2}^{-T}
+\end{matrix}\right].
+\end{align*}
+
+
+
+
+\end{document}
