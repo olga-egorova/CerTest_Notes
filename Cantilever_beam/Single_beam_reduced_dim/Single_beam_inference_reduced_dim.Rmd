@@ -279,11 +279,8 @@ Fitting can take a couple of minutes -- that does depend on the number of data a
 
 ```{r}
 # run model in stan
-fit = stan(
-  file = "/Users/olga/work/CerTest/CerTest_notes/Cantilever_beam/Single_beam_two_thetas/Bayesian_calibration_GPs.stan",
-  data = stan_data,
-  iter = 4000,
-  chains = 3)
+fit = stan(file = "Bayesian_calibration_GPs.stan", data = stan_data, 
+           iter = 4000, chains = 3)
 
 # plot traceplots, excluding warm-up
 stan_trace(fit, pars = c("mu","tf", "cl2_eta_inv", "cl2_delta_inv", 
