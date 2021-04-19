@@ -1,5 +1,4 @@
 
-*.html
 *.rds
 Cantilever_beam/rstan_exercises.R
 Cantilever_beam/Cantilever_beam_explore.Rmd

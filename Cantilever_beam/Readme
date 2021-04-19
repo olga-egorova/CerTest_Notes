@@ -1,0 +1,10 @@
+This folder contains some code dealing with a toy example considering a "made up" data of displacements from a cantilever beam and the outputs of the computer model described in "py_comp" -- can be found on this Github page as well (originally froked from Tim Dodwell's directory). 
+Running this code in python is not necessary, as all the outputs and setups, together with all the outputs from the code in R are saved in "out" folders.
+
+- "Single_beam" folder contains the original calibration setup, where the aim is to obtain a posterior inference on the angle misalignments in the three layers (the details are given in each of the .Rmd files, accompanied by .html ones)
+
+- "Single_beam_two_thetas" folder has the example with the reduced number of calibration parameters of interest, with the third angle misalignment being set to 0
+
+- "Single_beam_nonisotropic_error" folder contains the case of non-isotropic variance of thee discrepancy term: both at the artificial data geneeration step and at the fitting step
+
+Each of the folders contain the main .Rmd file, the knitted/compiled .html file, .stan files with the models.
