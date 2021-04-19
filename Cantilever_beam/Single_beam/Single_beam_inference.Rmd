@@ -48,7 +48,7 @@ n_simulations = 30   # number of simulations
 
 I.  Data
 
-Picking the "true" theta-s (chooising at random in the region $[-\pi/30, \pi/30]$), running the FE model and saving the displacements.
+Picking the "true" theta-s (choosing at random in the region $[-\pi/30, \pi/30]$), running the FE model and saving the displacements.
 If no python code is run -- please go straight to the next chunk.
 
 ```{r}
@@ -228,13 +228,13 @@ par(family="CMU Serif", las=1, bty="l", cex.axis=1, cex.lab=1, cex.main=1,
 
 ## https://github.com/adChong/bc-stan/blob/master/src/main.R
 
-# get dimensions of dataset
+# get dimensions of datasets
 p = ncol(dt_data_coords)     # number of input factors
 q = ncol(XT_sim) - p    # number of calibration parameters
 n = nrow(dt_data)       # sample size of observed field data
 m = nrow(XT_sim)        # sample size of computer simulation data
 
-# extract data from DATAFIELD (Table 3) and DATACOMP (Table 4) 
+# extract data from dt_data and dt_simulation
 y = dt_data[, p+1]                   # observed output
 eta = dt_simulation[,p+q+1]         # simulation output
 xf = dt_data[,1:p]                  # observed (controllable) input
@@ -311,14 +311,13 @@ theta_data/(pi/180)
 ```
 
 
-Look at pairs and triplets of theta posteriors -- in contrast with marginals observed on the histograms before
+Look at pairs and triplets of theta posteriors -- in contrast with marginals observed on the histograms before.
 ```{r}
 df_of_draws = as.data.table(fit)              
 setnames(df_of_draws, old = c("tf[1]", "tf[2]", "tf[3]"),
          new = c("tf1", "tf2", "tf3"))
 head(df_of_draws)
 
-#hexbin::hexbinplot(tf2~tf1, data=df_of_draws, mincnt=2, maxcnt=20)
 library(MASS)
 
 # par()    #change plotting parameters
