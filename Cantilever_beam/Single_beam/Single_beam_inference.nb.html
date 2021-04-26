@@ -11,7 +11,7 @@
 
 <meta name="author" content="Olga Egorova" />
 
-<meta name="date" content="2021-04-19" />
+<meta name="date" content="2021-04-22" />
 
 <title>Cantilever beam modelling: single beam</title>
 
@@ -213,7 +213,7 @@ pre code {
 
 <h1 class="title toc-ignore">Cantilever beam modelling: single beam</h1>
 <h4 class="author">Olga Egorova</h4>
-<h4 class="date">19 April 2021</h4>
+<h4 class="date">22 April 2021</h4>
 
 </div>
 
@@ -248,15 +248,11 @@ library(rstan)</code></pre>
 <p>First we set up the parameters – the number of beams that we have “observed” (here – it is <span class="math inline">\(1\)</span>), number of data points observed and the number of simulations.</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubl9iZWFtID0gMSAgICAgICAgICAgIyBudW1iZXIgb2YgXCJ0cnVlXCIgdW5kZXJseWluZyB0aGV0YS1zXG5uX2RhdGEgPSAxMCAgICAgICAgICAjIG51bWJlciBvZiBkYXRhIHBvaW50c1xubl9zaW11bGF0aW9ucyA9IDMwICAgIyBudW1iZXIgb2Ygc2ltdWxhdGlvbnNcbmdldHdkKClcbmBgYCJ9 -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubl9iZWFtID0gMSAgICAgICAgICAgIyBudW1iZXIgb2YgXCJ0cnVlXCIgdW5kZXJseWluZyB0aGV0YS1zXG5uX2RhdGEgPSAxMCAgICAgICAgICAjIG51bWJlciBvZiBkYXRhIHBvaW50c1xubl9zaW11bGF0aW9ucyA9IDMwICAgIyBudW1iZXIgb2Ygc2ltdWxhdGlvbnNcbmBgYCJ9 -->
 <pre class="r"><code>n_beam = 1           # number of &quot;true&quot; underlying theta-s
 n_data = 10          # number of data points
-n_simulations = 30   # number of simulations
-getwd()</code></pre>
+n_simulations = 30   # number of simulations</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiWzFdIFwiL1VzZXJzL29sZ2Evd29yay9DZXJUZXN0L0NlclRlc3RfTm90ZXMvQ2FudGlsZXZlcl9iZWFtL1NpbmdsZV9iZWFtXCJcbiJ9 -->
-<pre><code>[1] &quot;/Users/olga/work/CerTest/CerTest_Notes/Cantilever_beam/Single_beam&quot;</code></pre>
-<!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <ol style="list-style-type: upper-roman">
